@@ -53,6 +53,11 @@ input, textarea, label {
   color: #000;
 }
 
+label.error {
+  color: red;
+  font-weight: bold;
+}
+
 textarea {
   width: 100%;
   box-sizing: border-box;
@@ -61,7 +66,8 @@ textarea {
   line-height: 24px;
   min-height: 35px;
   padding: 5px;
-  background-color: rgba(255, 255, 255, 0.8)
+  background-color: rgba(255, 255, 255, 0.8);
+  outline: none;
 }
 
 label {

@@ -1,7 +1,7 @@
 <template>
   <div class="translator" @dragover='dragover' :class="{ dragging }">
     <header>
-      <h2>vue-i18n-translator</h2>
+      <h2>Vue i18n Translator</h2>
       <small>
         <code>$ cd your/vue/project</code><br/>
         <code>$ npx vue-i18n-service export > translations.json</code><br/>
@@ -24,22 +24,38 @@
         </a>
       </li>
     </ul>
+    <div class="editor-actions">
+      <button @click='output="json"' :class="{selected:output==='json'}">json</button>
+      <button @click='output="yaml"' :class="{selected:output==='yaml'}">yaml</button>
+    </div>
     <section class="editor">
-      <codemirror v-model='editingSource'></codemirror>
+      <code class="tag" v-if="output==='yaml'">&lt;i18n lang="yaml"&gt;</code>
+      <code class="tag" v-else>&lt;i18n&gt;</code>
+      <codemirror v-model='editingSource' @blur='compileEditing' :options='{mode: output === "yaml" ? "text/yaml" : "application/json"}'></codemirror>
+      <code class="tag">&lt;/i18n&gt;</code>
     </section>
     <section class="actions">
       <button @click='selectedLocale=locale' :key='locale' v-for='locale in parsedLocales' :class="{selected:locale==selectedLocale}" :disabled='locale==selectedLocale'>{{ locale }}</button>
-      <button class="download" @click='download'>download <b>translations.json</b></button>
+      <button @click='addLocale'>+</button>
+      <button class="download" @click='download'>download <b>translations.edited.json</b></button>
     </section>
     <section class="table">
       <table>
         <tr :key='key' v-for='(value, key) in selectedLocaleEditing'>
-          <td><label>{{ key }}</label></td><td><textarea v-model='editingParsed[`${selectedLocale}.${key}`]'></textarea>
-            <button @click='removeKey(`${selectedLocale}.${key}`)'>remove translation</button>
+          <td>
+            <label :class="{error: !value.trim()}">{{ key }}</label>
+          </td>
+          <td>
+            <textarea v-model='editingParsed[`${selectedLocale}.${key}`]'></textarea>
+            <button class="remove" @click='removeKey(key)'>&times;</button>
           </td>
         </tr>
         <tr>
-          <td><input v-model='newKey.key' placeholder='message.deep' /></td><td>
+          <td>
+            <input v-model='newKey.key' placeholder='translation key' />
+            <small>You can nest translations keys using dots. Eg. `login.welcome`</small>
+          </td>
+          <td>
             <textarea v-model='newKey.value'></textarea>
             <button @click='addNewKey'>add new translation</button>
           </td>
@@ -50,6 +66,7 @@
 </template>
 
 <script>
+import YAML from 'js-yaml'
 import { flatten, unflatten } from 'flat'
 
 const saveData = (function () {
@@ -71,6 +88,7 @@ export default {
   name: 'Translator',
   data () {
     return {
+      output: 'json',
       fileFilter: '',
       selectedLocale: '',
       parsedLocales: [],
@@ -81,22 +99,6 @@ export default {
       editingFile: null,
       translationsSource: `
         {
-          "src/components/Hello.vue": {
-            "en": {
-              "hello": "hello"
-            },
-            "tr": {
-              "hello": "merhaba"
-            }
-          },
-          "src/components/World.vue": {
-            "en": {
-              "world": "world"
-            },
-            "tr": {
-              "world": "dünya"
-            }
-          }
         }
       `,
       translationsParsed: {},
@@ -104,43 +106,71 @@ export default {
     }
   },
   watch: {
+    output () {
+      this.editingSource = this.compiler(unflatten(this.editingParsed, { overwrite: true }), null, 2)
+      this.compileEditing()
+      this.rebuildEditor()
+    },
     editingFile (_, oldVal) {
       if (oldVal) {
         this.translationsParsed = {
           ...this.translationsParsed,
-          [oldVal]: unflatten(this.editingParsed)
+          [oldVal]: unflatten(this.editingParsed, { overwrite: true })
         }
         this.compile()
       }
-      this.editingSource = JSON.stringify(this.translationsParsed[this.editingFile], null, 2)
-      this.editingParsed = flatten(JSON.parse(this.editingSource))
+      this.rebuildEditor()
     },
     editingParsed: {
       deep: true,
       handler () {
-        this.editingSource = JSON.stringify(unflatten(this.editingParsed, { overwrite: true }), null, 2)
+        this.editingSource = this.compiler(unflatten(this.editingParsed, { overwrite: true }), null, 2)
       }
-    },
-    translationsParsed () {
-      console.log(this.translationsParsed)
-    },
-    editingSource () {
-      try {
-        this.editingParsed = flatten(JSON.parse(this.editingSource))
-      } catch (e) {}
     }
   },
   computed: {
+    parser () {
+      return this.output === 'yaml' ? YAML.safeLoad : JSON.parse
+    },
+    compiler () {
+      return this.output === 'yaml' ? YAML.safeDump : JSON.stringify
+    },
     selectedLocaleEditing () {
-      const keys = unflatten(this.editingParsed)[this.selectedLocale]
+      const keys = unflatten(this.editingParsed, { overwrite: true })[this.selectedLocale]
       return keys ? flatten(keys) : {}
     }
   },
   created () {
     this.parse()
     this.editingFile = this.files[0]
+    const myjsonID = window.location.hash.replace(/^#/, '').trim()
+    if (myjsonID) {
+      try {
+        const url = `https://api.myjson.com/bins/${myjsonID}`
+        fetch(url)
+          .then(r => r.json())
+          .then(r => this.inputSource(JSON.stringify(r)))
+      } catch (e) {
+        alert(`cannot parse myjson url: ${url}`)
+      }
+    }
   },
   methods: {
+    addLocale () {
+      const locale = prompt('locale code (en, tr, gr, etc., values will be copied from selected language)', '').trim()
+      if (!locale || this.parsedLocales.includes(locale)) return;
+      this.parsedLocales.push(locale)
+      const copy = unflatten(this.editingParsed, { overwrite: true })[this.selectedLocale]
+      for (let [file, i18n] of Object.entries(this.translationsParsed)) {
+        this.translationsParsed[file] = {
+          ...i18n,
+          [locale]: i18n[this.selectedLocale]
+        }
+      }
+      this.selectedLocale = locale
+      this.rebuildEditor()
+      this.compile()
+    },
     dragover (e) {
       e.preventDefault()
       this.dragging = true
@@ -149,11 +179,17 @@ export default {
       e.preventDefault()
       const reader = new FileReader()
       reader.onload = () => {
-        this.translationsSource = reader.result
-        this.parse()
+        this.inputSource(reader.result)
         this.dragging = false
       }
       const source = reader.readAsText(e.dataTransfer.files[0])
+    },
+    inputSource (input) {
+      this.translationsSource = input
+      setTimeout(() => {
+        this.parse()
+        this.editingFile = this.files[0]
+      }, 100)
     },
     parse () {
       this.translationsParsed = JSON.parse(this.translationsSource)
@@ -166,10 +202,21 @@ export default {
     compile () {
       this.translationsSource = JSON.stringify(this.translationsParsed, null, 2)
     },
+    rebuildEditor () {
+      this.editingSource = this.compiler(this.translationsParsed[this.editingFile], null, 2)
+      this.editingParsed = flatten(this.parser(this.editingSource), { overwrite: true })
+    },
+    compileEditing () {
+      this.editingParsed = flatten(this.parser(this.editingSource), {overwrite: true})
+      this.translationsParsed[this.editingFile] = unflatten(this.editingParsed, { overwrite: true })
+    },
     removeKey (key) {
       const parsed = { ... this.editingParsed }
-      delete parsed[key]
-      this.editingParsed = flatten(parsed)
+      if (!confirm(`all translations with ${key} will be deleted! sure?`)) return;
+      this.parsedLocales.forEach(l => {
+        delete parsed[`${l}.${key}`]
+      })
+      this.editingParsed = flatten(parsed, {overwrite: true})
     },
     addNewKey () {
       const parsed = { ... this.editingParsed }
@@ -177,10 +224,13 @@ export default {
         return;
       }
       this.parsedLocales.forEach(l => {
-        parsed[`${l}.${this.newKey.key}`] = ''
+        parsed[`${l}.${this.newKey.key}`] = parsed[`${l}.${this.newKey.key}`] || ''
       })
       parsed[`${this.selectedLocale}.${this.newKey.key}`] = this.newKey.value
-      this.editingParsed = flatten(parsed)
+      this.editingParsed = flatten(parsed, { overwrite: true })
+      this.editingSource = this.compiler(parsed, null, 2)
+      this.compileEditing()
+      this.rebuildEditor()
       this.newKey = { key: '', value: '' }
     },
     download () {
@@ -215,11 +265,10 @@ h2 + small {
 .translator {
   display: grid;
   grid-template-areas:
-    "header header"
-    "files actions"
-    "files table"
-    "files editor";
-  grid-template-columns: auto 1fr;
+    "header header header"
+    "files actions editor-actions"
+    "files table editor";
+  grid-template-columns: auto 1fr 1fr;
   grid-template-rows: auto auto 1fr;
   height: 100vh;
 }
@@ -256,6 +305,12 @@ header {
   border-bottom: 1px solid #ccc;
 }
 
+.editor-actions {
+  grid-area: editor-actions;
+  display: flex;
+  padding: 0 5px;
+}
+
 .actions button {
   border: 5px solid transparent;
 }
@@ -264,6 +319,7 @@ header {
   margin-left: auto;
 }
 
+.editor-actions button.selected,
 .actions button.selected {
   border: 5px solid rgb(42, 104, 42);
 }
@@ -271,6 +327,7 @@ header {
 .files {
   grid-area: files;
   background-color: #252525;
+  overflow-y: auto;
 }
 
 .files a {
@@ -299,6 +356,14 @@ header {
   display: flex;
   flex-direction: column;
   border-top: 1px solid #ccc;
+  overflow-y: auto;
+}
+
+code.tag {
+  font-family: Menlo, 'Courier New', Courier, monospace;
+  font-weight: bold;
+  margin: 5px;
+  opacity: 0.4;
 }
 
 .editor textarea {
@@ -308,6 +373,7 @@ header {
 
 .table {
   grid-area: table;
+  overflow-y: auto;
 }
 
 .table table {
@@ -321,6 +387,35 @@ header {
 .table table td {
   vertical-align: top;
   text-align: right;
+  position: relative;
+}
+
+.table table td .remove {
+  display: none;
+}
+
+.table table td:hover .remove {
+  display: block;
+}
+
+button.remove {
+  position: absolute;
+  background-color: red;
+  width: 20px;
+  height: 20px;
+  top: 5px;
+  right: 0;
+  border-radius: 50%;
+  font-size: 18px !important;
+  line-height: 20px;
+  padding: 0 !important;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0.4;
+}
+
+button.remove:hover {
+  opacity: 1;
 }
 
 .table table td button {
@@ -331,5 +426,11 @@ header {
 .table table td input {
   width: 100%;
   display: block;
+  text-align: right;
+  font-family: Menlo, 'Courier New', Courier, monospace;
+}
+
+.table table td input::placeholder {
+  text-align: right;
 }
 </style>
