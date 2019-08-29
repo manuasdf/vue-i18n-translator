@@ -99,42 +99,6 @@ export default {
       editingFile: null,
       translationsSource: `
         {
-          "src/components/Hello.vue": {
-            "en": {
-              "hello": "hello"
-            },
-            "tr": {
-              "hello": "merhaba"
-            }
-          },
-          "src/components/World.vue": {
-            "en": {
-              "world": "world"
-            },
-            "tr": {
-              "world": "dünya"
-            }
-          },
-          "src/components/Login.vue": {
-            "en": {
-              "title": "Login",
-              "email": "Email",
-              "password": "Password",
-              "login": "Log In",
-              "signin": "Sign In",
-              "forget_password": "Forget password?",
-              "reset_password": "Reset password"
-            },
-            "tr": {
-              "title": "Giriş",
-              "email": "E-posta",
-              "password": "Parola",
-              "login": "Giriş",
-              "signin": "Kayıt Ol",
-              "forget_password": "Parolanı mı unuttun?",
-              "reset_password": "Parolanı sıfırla"
-            }
-          }
         }
       `,
       translationsParsed: {},
