@@ -1,4 +1,5 @@
 # vue-i18n-translator
+An UI that helps the language team to translate websites and applications built in vue with i18n.
 
 ## Project setup
 ```
