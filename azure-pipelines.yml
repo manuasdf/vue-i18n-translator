@@ -10,12 +10,29 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- task: NodeTool@0
-  inputs:
-    versionSpec: '10.x'
-  displayName: 'Install Node.js'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '10.x'
+    displayName: 'Install Node.js'
 
-- script: |
-    yarn install
-    yarn run build
-  displayName: 'yarn install and build'
+  - script: |
+      yarn install
+      yarn run build
+    displayName: 'yarn install and build'
+
+    # Kindly provided by Martin Kacmar:
+    # Following task will copy contents of dist/ folder over to predefined directory $web that hosts a static website
+    # "Azure File Copy" task is a more straight-forward way to do this, but it's only available on Windows machines
+    - task: Bash@3
+      displayName: Deploy app to blob storage
+      inputs:
+        targetType: inline
+        # Authenticating via currently deprecated key option allows us to simply provide a key value for upload
+        # rather then doing a full 'az login'
+        script: >
+          az storage blob upload-batch
+          --auth-mode key
+          --account-key $(AZURE_STORAGE_KEY)
+          --destination '$web'
+          --source dist
+          --account-name $(AZURE_STORAGE_ACCOUNT_NAME)
